@@ -63,15 +63,29 @@ async def intake_sms(request: SMSIntakeRequest):
     
     Receives incoming SMS from tenants and creates a maintenance ticket.
     """
-    logger.info(f"Received SMS from {request.From}: {request.Body}")
+    # Handle both field name variations
+    sender = request.sender_phone or getattr(request, 'from_', None)
+    message = request.message_body or getattr(request, 'Body', None) or getattr(request, 'body', '')
+    
+    logger.info(f"Received SMS from {sender}: {message}")
     
     try:
+        # Extract unit from message
+        unit = None
+        if hasattr(request, 'get_unit'):
+            unit = request.get_unit()
+        else:
+            import re
+            match = re.search(r'\bunit\s+(\d+[A-Z]?)\b', message, re.IGNORECASE)
+            if match:
+                unit = match.group(1)
+        
         # Create ticket in Supabase with status="incoming"
         ticket = await create_ticket(
-            unit=request.get_unit(),  # Extract unit from message if present
-            issue_raw=request.Body,
+            unit=unit,
+            issue_raw=message,
             channel="sms",
-            tenant_phone=request.From,
+            tenant_phone=sender,
         )
         
         logger.info(f"Created ticket {ticket.id} from SMS")

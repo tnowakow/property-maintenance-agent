@@ -18,8 +18,24 @@ class SMSIntakeRequest(BaseModel):
     
     Fields received from Twilio when a tenant sends an SMS.
     """
-    From: str = Field(..., description="Sender's phone number (E.164 format)")
-    Body: str = Field(..., description="Message content")
+    From: Optional[str] = Field(None, description="Sender's phone number (E.164 format)")
+    body: str = Field(..., description="Message content")
+    Body: Optional[str] = Field(None, description="Message content (alternative casing)")
+    
+    model_config = {
+        'populate_by_name': True,
+        'extra': 'allow'  # Allow extra fields from Twilio
+    }
+    
+    @property
+    def message_body(self) -> str:
+        """Get the message body, handling both field names."""
+        return self.body or self.Body or ""
+    
+    @property
+    def sender_phone(self) -> str:
+        """Get the sender's phone number."""
+        return self.From or ""
     
     def get_unit(self) -> Optional[str]:
         """
