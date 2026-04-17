@@ -90,11 +90,11 @@ async def intake_sms(request: Request):
             tenant_phone=sender,
         )
         
-        logger.info(f"Created ticket {ticket.id} from SMS")
+        logger.info(f"Created ticket {ticket['id']} for unit {unit} from SMS")
         
         return TicketCreateResponse(
             status="success",
-            ticket_id=ticket.id
+            ticket_id=ticket['id']
         )
     except Exception as e:
         logger.error(f"Error processing SMS intake: {e}")
