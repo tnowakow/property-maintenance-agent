@@ -57,28 +57,30 @@ async def root():
 # ============================================================================
 
 @app.post("/intake/sms", response_model=TicketCreateResponse, status_code=status.HTTP_201_CREATED)
-async def intake_sms(request: SMSIntakeRequest):
+async def intake_sms(request: Request):
     """
     Twilio SMS webhook handler.
     
     Receives incoming SMS from tenants and creates a maintenance ticket.
     """
-    # Handle both field name variations
-    sender = request.sender_phone or getattr(request, 'from_', None)
-    message = request.message_body or getattr(request, 'Body', None) or getattr(request, 'body', '')
+    # Log raw request for debugging
+    body = await request.json()
+    logger.info(f"Raw Twilio request body: {body}")
+    logger.info(f"Request headers: {dict(request.headers)}")
+    
+    # Extract fields flexibly
+    sender = body.get('From') or body.get('from') or ''
+    message = body.get('Body') or body.get('body') or ''
     
     logger.info(f"Received SMS from {sender}: {message}")
     
     try:
         # Extract unit from message
+        import re
         unit = None
-        if hasattr(request, 'get_unit'):
-            unit = request.get_unit()
-        else:
-            import re
-            match = re.search(r'\bunit\s+(\d+[A-Z]?)\b', message, re.IGNORECASE)
-            if match:
-                unit = match.group(1)
+        match = re.search(r'\bunit\s+(\d+[A-Z]?)\b', message, re.IGNORECASE)
+        if match:
+            unit = match.group(1)
         
         # Create ticket in Supabase with status="incoming"
         ticket = await create_ticket(
