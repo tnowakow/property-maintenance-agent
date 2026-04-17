@@ -62,15 +62,15 @@ async def intake_sms(request: Request):
     Twilio SMS webhook handler.
     
     Receives incoming SMS from tenants and creates a maintenance ticket.
+    Twilio sends form-encoded data (application/x-www-form-urlencoded), not JSON.
     """
-    # Log raw request for debugging
-    body = await request.json()
-    logger.info(f"Raw Twilio request body: {body}")
-    logger.info(f"Request headers: {dict(request.headers)}")
+    # Parse form data from Twilio
+    form = await request.form()
+    logger.info(f"Raw Twilio form data: {dict(form)}")
     
-    # Extract fields flexibly
-    sender = body.get('From') or body.get('from') or ''
-    message = body.get('Body') or body.get('body') or ''
+    # Extract fields from form
+    sender = form.get('From', '') or form.get('from', '')
+    message = form.get('Body', '') or form.get('body', '')
     
     logger.info(f"Received SMS from {sender}: {message}")
     
