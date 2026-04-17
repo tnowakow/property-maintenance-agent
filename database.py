@@ -71,16 +71,15 @@ async def create_ticket(
     """
     client = get_db()
     
-    # Prepare ticket data
+    # Prepare ticket data (matching Supabase schema)
     ticket_data = {
         "unit": unit,
         "issue_raw": issue_raw,
         "channel": channel,
         "status": "incoming",  # Initial status
         "tenant_phone": tenant_phone,
-        "property": property_name,
-        "created_at": datetime.utcnow().isoformat(),
-        "updated_at": datetime.utcnow().isoformat(),
+        "urgency": "MEDIUM",  # Default urgency, will be updated by triage agent
+        "trade_type": "General",  # Default trade type, will be updated by triage agent
     }
     
     try:
