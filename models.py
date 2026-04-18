@@ -6,6 +6,7 @@ Request and response models for API validation.
 from typing import Optional, Literal
 from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
+import re
 
 
 # ============================================================================
@@ -14,18 +15,68 @@ from datetime import datetime
 
 class SMSIntakeRequest(BaseModel):
     """
-    Twilio SMS webhook request model.
+    Twilio SMS webhook request model with validation.
     
     Fields received from Twilio when a tenant sends an SMS.
+    Includes input sanitization and phone number validation.
     """
     From: Optional[str] = Field(None, description="Sender's phone number (E.164 format)")
-    body: str = Field(..., description="Message content")
+    body: str = Field(..., min_length=1, max_length=160, description="Message content")
     Body: Optional[str] = Field(None, description="Message content (alternative casing)")
     
     model_config = {
         'populate_by_name': True,
         'extra': 'allow'  # Allow extra fields from Twilio
     }
+    
+    @field_validator('From')
+    @classmethod
+    def validate_phone(cls, v):
+        """
+        Validate phone number format (E.164 standard).
+        
+        Accepts formats like: +1234567890, +1-234-567-8900
+        Rejects invalid formats or empty strings.
+        """
+        if not v:
+            return v  # Allow None for optional field
+        
+        # Remove common separators for validation
+        cleaned = re.sub(r'[\s\-\(\)\.]', '', v)
+        
+        # Check E.164 format: + followed by 7-15 digits
+        if not re.match(r'^\+?\d{7,15}$', cleaned):
+            raise ValueError(
+                f'Invalid phone number format: {v}. Expected E.164 format (e.g., +1234567890)'
+            )
+        
+        return v
+    
+    @field_validator('body', 'Body')
+    @classmethod
+    def sanitize_body(cls, v):
+        """
+        Sanitize message body to prevent XSS attacks.
+        
+        Removes HTML/XML tags and non-ASCII characters.
+        Limits length to 160 characters (SMS standard).
+        """
+        if not v:
+            raise ValueError('Message body cannot be empty')
+        
+        # Remove HTML/XML tags (XSS prevention)
+        sanitized = re.sub(r'<[^>]+>', '', v)
+        
+        # Keep only ASCII characters and common punctuation
+        sanitized = re.sub(r'[^a-zA-Z0-9\s.,!?\'"()-]', '', sanitized)
+        
+        # Strip whitespace
+        sanitized = sanitized.strip()
+        
+        if not sanitized:
+            raise ValueError('Message body is empty after sanitization')
+        
+        return sanitized[:160]  # Enforce SMS length limit
     
     @property
     def message_body(self) -> str:

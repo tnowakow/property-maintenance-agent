@@ -31,14 +31,24 @@ def get_supabase_client() -> Client:
 
 
 # Global client instance (initialized on first use)
+# Singleton pattern ensures single connection across entire application
 _supabase_client: Optional[Client] = None
 
 
 def get_db() -> Client:
-    """Get or create the Supabase client instance."""
+    """
+    Get or create the Supabase client instance.
+    
+    Uses singleton pattern for connection pooling - all requests share
+    the same client instance, reusing connections efficiently.
+    
+    Returns:
+        Supabase client instance (lazy-loaded on first call)
+    """
     global _supabase_client
     if _supabase_client is None:
         _supabase_client = get_supabase_client()
+        print("[Database] Initialized singleton Supabase client")
     return _supabase_client
 
 
