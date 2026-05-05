@@ -2,18 +2,10 @@
 # https://docs.railway.app/deployments/projects/config
 
 [build]
-builder = "NIXPACKS"
+builder = "DOCKER"
 plan = "standard"
 
-[[build.commands]]
-command = """
-pip install -r requirements.txt
-cd ../dashboard-v2 && npm ci && npm run build
-cd ../backend
-"""
-
 [deploy]
-startCommand = "pip install -r requirements.txt && uvicorn main:app --host 0.0.0.0 --port $PORT"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 5
 numReplicas = 1
