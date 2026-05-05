@@ -16,10 +16,9 @@ numReplicas = 1
 NODE_ENV = "production"
 PYTHON_VERSION = "3.11"
 
-# Supabase Configuration - Set these in Railway dashboard
-SUPABASE_URL = ""          # Your Supabase project URL (https://xxx.supabase.co)
-SUPABASE_ANON_KEY = ""     # Supabase anon/public key
-SUPABASE_SERVICE_ROLE_KEY = ""  # Supabase service role key (for server-to-server auth)
+# PostgreSQL Configuration - Railway provides DATABASE_URL automatically
+# when you add the PostgreSQL plugin: `railway add postgresql`
+# No manual configuration needed!
 
 # Twilio Configuration - Set these in Railway dashboard
 TWILIO_ACCOUNT_SID = ""    # Twilio Account SID (from Twilio console)

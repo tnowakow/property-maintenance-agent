@@ -27,7 +27,7 @@ from models import (
     ProcessAgentRequest,
     ProcessAgentResponse,
 )
-from database import create_ticket, get_ticket, update_ticket
+from database import create_ticket, get_ticket, update_ticket, get_all_tickets, get_tickets_by_status
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -197,6 +197,120 @@ async def get_ticket_endpoint(ticket_id: str):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"error": "Failed to retrieve ticket", "message": str(e)}
+        )
+
+
+# ============================================================================
+# DASHBOARD API ENDPOINTS (for frontend)
+# ============================================================================
+
+@app.get("/api/tickets")
+async def list_tickets(
+    status: Optional[str] = None,
+    limit: int = 100
+):
+    """
+    List all tickets with optional filtering.
+    
+    Args:
+        status: Optional status filter (incoming, triaged, dispatched, etc.)
+        limit: Maximum number of tickets to return (default 100)
+    
+    Returns:
+        List of ticket dictionaries
+    """
+    try:
+        if status:
+            tickets = await get_tickets_by_status(status)
+        else:
+            tickets = await get_all_tickets()
+        
+        # Apply limit
+        tickets = tickets[:limit]
+        
+        return {"tickets": tickets, "count": len(tickets)}
+    except Exception as e:
+        logger.error(f"Error listing tickets: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "Failed to list tickets", "message": str(e)}
+        )
+
+
+@app.post("/api/tickets", response_model=TicketCreateResponse, status_code=status.HTTP_201_CREATED)
+async def create_ticket_endpoint(request: WebIntakeRequest):
+    """
+    Create a new maintenance ticket via API.
+    
+    Used by the frontend dashboard for manual ticket creation.
+    """
+    logger.info(f"Creating ticket via API for unit {request.unit}")
+    
+    try:
+        ticket = await create_ticket(
+            unit=request.unit,
+            issue_raw=request.issue,
+            channel="web",
+            tenant_phone=request.phone,
+        )
+        
+        logger.info(f"Created ticket {ticket['id']} via API")
+        
+        return TicketCreateResponse(
+            status="success",
+            ticket_id=ticket['id'],
+            message="Ticket created successfully"
+        )
+    except Exception as e:
+        logger.error(f"Error creating ticket: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "Failed to create ticket", "message": str(e)}
+        )
+
+
+@app.patch("/api/tickets/{ticket_id}", response_model=TicketResponse)
+async def update_ticket_endpoint(ticket_id: str, updates: dict):
+    """
+    Update a ticket by ID.
+    
+    Used by the frontend dashboard to update ticket status and fields.
+    
+    Args:
+        ticket_id: The UUID of the ticket to update
+        updates: Dictionary of fields to update (e.g., {"status": "triaged", "urgency": "HIGH"})
+    
+    Returns:
+        Updated ticket data
+    """
+    logger.info(f"Updating ticket {ticket_id} with {updates}")
+    
+    try:
+        # Validate that updates doesn't include 'id' (immutable)
+        if "id" in updates:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"error": "Cannot update ticket ID", "message": "ID is immutable"}
+            )
+        
+        updated_ticket = await update_ticket(ticket_id, updates)
+        
+        if not updated_ticket:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"error": "Ticket not found", "ticket_id": ticket_id}
+            )
+        
+        logger.info(f"Updated ticket {ticket_id} successfully")
+        return TicketResponse.model_validate(updated_ticket)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating ticket {ticket_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "Failed to update ticket", "message": str(e)}
         )
 
 

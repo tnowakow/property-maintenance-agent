@@ -1,55 +1,53 @@
 """
 Property Maintenance Agent - Database Layer
-Supabase connection and helper functions for ticket management.
+PostgreSQL connection and helper functions for ticket management.
 """
 
 import os
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
-from supabase import create_client, Client
+import asyncpg
 
 
 # ============================================================================
-# SUPABASE CONNECTION
+# POSTGRESQL CONNECTION (Railway)
 # ============================================================================
 
-def get_supabase_client() -> Client:
+# Global connection pool (initialized on first use)
+# Singleton pattern ensures efficient connection pooling across all requests
+_db_pool: Optional[asyncpg.Pool] = None
+
+
+async def get_db_pool() -> asyncpg.Pool:
     """
-    Initialize and return Supabase client from environment variables.
+    Get or create the PostgreSQL connection pool.
     
-    Uses service role key for internal API calls (full database access).
-    """
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-    
-    if not supabase_url or not supabase_key:
-        raise ValueError(
-            "Missing Supabase credentials. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables."
-        )
-    
-    return create_client(supabase_url, supabase_key)
-
-
-# Global client instance (initialized on first use)
-# Singleton pattern ensures single connection across entire application
-_supabase_client: Optional[Client] = None
-
-
-def get_db() -> Client:
-    """
-    Get or create the Supabase client instance.
-    
-    Uses singleton pattern for connection pooling - all requests share
-    the same client instance, reusing connections efficiently.
+    Uses Railway's DATABASE_URL environment variable (provided automatically).
+    Connection pooling ensures efficient reuse of database connections.
     
     Returns:
-        Supabase client instance (lazy-loaded on first call)
+        asyncpg connection pool instance
     """
-    global _supabase_client
-    if _supabase_client is None:
-        _supabase_client = get_supabase_client()
-        print("[Database] Initialized singleton Supabase client")
-    return _supabase_client
+    global _db_pool
+    if _db_pool is None:
+        database_url = os.getenv("DATABASE_URL")
+        
+        if not database_url:
+            raise ValueError(
+                "Missing DATABASE_URL environment variable. "
+                "Railway provides this automatically when PostgreSQL is added."
+            )
+        
+        # Create connection pool (5-10 connections is typical for web apps)
+        _db_pool = await asyncpg.create_pool(
+            dsn=database_url,
+            minimum_size=3,
+            maximum_size=10,
+            command_timeout=60
+        )
+        print(f"[Database] Initialized PostgreSQL connection pool (3-10 connections)")
+    
+    return _db_pool
 
 
 # ============================================================================
@@ -64,7 +62,7 @@ async def create_ticket(
     property_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Create a new maintenance ticket in Supabase.
+    Create a new maintenance ticket in PostgreSQL.
     
     Args:
         unit: Unit number (e.g., "101", "2B")
@@ -79,31 +77,31 @@ async def create_ticket(
     Raises:
         Exception: If ticket creation fails
     """
-    client = get_db()
-    
-    # Prepare ticket data (matching Supabase schema)
-    ticket_data = {
-        "unit": unit,
-        "issue_raw": issue_raw,
-        "channel": channel,
-        "status": "incoming",  # Initial status
-        "tenant_phone": tenant_phone,
-        "urgency": "MEDIUM",  # Default urgency, will be updated by triage agent
-        "trade_type": "General",  # Default trade type, will be updated by triage agent
-    }
+    pool = await get_db_pool()
     
     try:
-        # Insert ticket into Supabase
-        result = client.table("tickets").insert(ticket_data).execute()
-        
-        if not result.data or len(result.data) == 0:
-            raise Exception("No data returned from Supabase after insert")
-        
-        ticket = result.data[0]
-        print(f"Created ticket {ticket['id']} for unit {unit}")
-        
-        return ticket
-        
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                INSERT INTO tickets (
+                    unit, issue_raw, channel, status,
+                    tenant_phone, urgency, trade_type
+                )
+                VALUES ($1, $2, $3, 'incoming', $4, 'MEDIUM', 'General')
+                RETURNING *
+                """,
+                unit, issue_raw, channel, tenant_phone
+            )
+            
+            if not row:
+                raise Exception("No data returned after ticket insert")
+            
+            # Convert Row to dict for compatibility
+            ticket = dict(row)
+            print(f"Created ticket {ticket['id']} for unit {unit}")
+            
+            return ticket
+            
     except Exception as e:
         print(f"Error creating ticket: {e}")
         raise
@@ -119,17 +117,21 @@ async def get_ticket(ticket_id: str) -> Optional[Dict[str, Any]]:
     Returns:
         Dictionary containing ticket data, or None if not found
     """
-    client = get_db()
+    pool = await get_db_pool()
     
     try:
-        result = client.table("tickets").select("*").eq("id", ticket_id).execute()
-        
-        if not result.data or len(result.data) == 0:
-            print(f"Ticket {ticket_id} not found")
-            return None
-        
-        return result.data[0]
-        
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM tickets WHERE id = $1",
+                ticket_id
+            )
+            
+            if not row:
+                print(f"Ticket {ticket_id} not found")
+                return None
+            
+            return dict(row)
+            
     except Exception as e:
         print(f"Error retrieving ticket {ticket_id}: {e}")
         raise
@@ -149,26 +151,46 @@ async def update_ticket(
     Returns:
         Dictionary containing updated ticket data, or None if not found
     """
-    client = get_db()
+    pool = await get_db_pool()
     
     # Always update the updated_at timestamp
     updates["updated_at"] = datetime.utcnow().isoformat()
     
     try:
-        result = client.table("tickets").update(updates).eq("id", ticket_id).execute()
-        
-        if not result.data or len(result.data) == 0:
-            print(f"Ticket {ticket_id} not found for update")
-            return None
-        
-        return result.data[0]
-        
+        async with pool.acquire() as conn:
+            # Build dynamic UPDATE query
+            keys = list(updates.keys())
+            values = list(updates.values())
+            
+            # Remove ticket_id from update if present (it's the WHERE clause)
+            if "id" in keys:
+                keys.remove("id")
+                values.pop(keys.index("id") if "id" in [k for k in keys] else 0)
+            
+            set_clause = ", ".join([f"{key} = ${i+1}" for i, key in enumerate(keys)])
+            
+            row = await conn.fetchrow(
+                f"""
+                UPDATE tickets 
+                SET {set_clause}
+                WHERE id = ${len(values) + 1}
+                RETURNING *
+                """,
+                *values, ticket_id
+            )
+            
+            if not row:
+                print(f"Ticket {ticket_id} not found for update")
+                return None
+            
+            return dict(row)
+            
     except Exception as e:
         print(f"Error updating ticket {ticket_id}: {e}")
         raise
 
 
-async def get_tickets_by_status(status: str) -> list[Dict[str, Any]]:
+async def get_tickets_by_status(status: str) -> List[Dict[str, Any]]:
     """
     Retrieve all tickets with a specific status.
     
@@ -178,18 +200,47 @@ async def get_tickets_by_status(status: str) -> list[Dict[str, Any]]:
     Returns:
         List of ticket dictionaries
     """
-    client = get_db()
+    pool = await get_db_pool()
     
     try:
-        result = client.table("tickets").select("*").eq("status", status).execute()
-        
-        if not result.data:
-            return []
-        
-        return result.data
-        
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT * FROM tickets WHERE status = $1 ORDER BY created_at DESC",
+                status
+            )
+            
+            if not rows:
+                return []
+            
+            return [dict(row) for row in rows]
+            
     except Exception as e:
         print(f"Error retrieving tickets by status {status}: {e}")
+        raise
+
+
+async def get_all_tickets() -> List[Dict[str, Any]]:
+    """
+    Retrieve all tickets ordered by creation date.
+    
+    Returns:
+        List of ticket dictionaries
+    """
+    pool = await get_db_pool()
+    
+    try:
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT * FROM tickets ORDER BY created_at DESC"
+            )
+            
+            if not rows:
+                return []
+            
+            return [dict(row) for row in rows]
+            
+    except Exception as e:
+        print(f"Error retrieving all tickets: {e}")
         raise
 
 
@@ -204,27 +255,32 @@ async def get_unit(unit_number: str, property_id: Optional[str] = None) -> Optio
     Returns:
         Dictionary containing unit data, or None if not found
     """
-    client = get_db()
+    pool = await get_db_pool()
     
     try:
-        query = client.table("units").select("*").eq("unit_number", unit_number)
-        
-        if property_id:
-            query = query.eq("property_id", property_id)
-        
-        result = query.execute()
-        
-        if not result.data or len(result.data) == 0:
-            return None
-        
-        return result.data[0]
-        
+        async with pool.acquire() as conn:
+            if property_id:
+                row = await conn.fetchrow(
+                    "SELECT * FROM units WHERE unit_number = $1 AND property_id = $2",
+                    unit_number, property_id
+                )
+            else:
+                row = await conn.fetchrow(
+                    "SELECT * FROM units WHERE unit_number = $1",
+                    unit_number
+                )
+            
+            if not row:
+                return None
+            
+            return dict(row)
+            
     except Exception as e:
         print(f"Error retrieving unit {unit_number}: {e}")
         raise
 
 
-async def get_vendors_by_trade(trade: str) -> list[Dict[str, Any]]:
+async def get_vendors_by_trade(trade: str) -> List[Dict[str, Any]]:
     """
     Retrieve active vendors by trade type.
     
@@ -234,22 +290,20 @@ async def get_vendors_by_trade(trade: str) -> list[Dict[str, Any]]:
     Returns:
         List of vendor dictionaries
     """
-    client = get_db()
+    pool = await get_db_pool()
     
     try:
-        result = (
-            client.table("vendors")
-            .select("*")
-            .eq("trade", trade)
-            .eq("active", True)
-            .execute()
-        )
-        
-        if not result.data:
-            return []
-        
-        return result.data
-        
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT * FROM vendors WHERE trade_type = $1 AND is_active = TRUE",
+                trade
+            )
+            
+            if not rows:
+                return []
+            
+            return [dict(row) for row in rows]
+            
     except Exception as e:
         print(f"Error retrieving vendors for trade {trade}: {e}")
         raise

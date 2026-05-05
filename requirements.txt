@@ -6,10 +6,8 @@ fastapi>=0.109.0
 uvicorn[standard]>=0.27.0
 python-multipart>=0.0.6  # Required for form data parsing (Twilio webhooks)
 
-# Supabase client
-supabase>=2.3.0
-postgrest>=0.16.1
-storage3>=0.7.2
+# PostgreSQL client (async)
+asyncpg>=0.29.0
 
 # Data validation and models
 pydantic>=2.5.0
@@ -27,4 +25,3 @@ structlog>=24.1.0
 # Testing (optional, for development)
 pytest>=7.4.0
 pytest-asyncio>=0.23.0
-httpx>=0.26.0
