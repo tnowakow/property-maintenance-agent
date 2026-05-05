@@ -20,12 +20,20 @@ echo "✓ DATABASE_URL is configured"
 echo "DATABASE_URL (first 50 chars): ${DATABASE_URL:0:50}..."
 echo ""
 
-# Convert DATABASE_URL to psql-compatible format
-# Railway provides: postgresql://user:password@host:port/dbname
-# psql needs: host, user, password, dbname separately or use PGPASSWORD
+# Use PUBLIC URL for local execution, internal URL works inside Railway
+# When running locally with 'railway run', use DATABASE_PUBLIC_URL
+# When running inside a deployed service, DATABASE_URL works fine
+if [ -n "$DATABASE_PUBLIC_URL" ]; then
+    echo "Using public database URL (for local execution)"
+    DB_CONNECTION="$DATABASE_PUBLIC_URL"
+else
+    echo "Using internal database URL (inside Railway network)"
+    DB_CONNECTION="$DATABASE_URL"
+fi
+echo ""
 
 echo "Creating database schema..."
-psql "$DATABASE_URL" -f /app/postgres-schema.sql
+psql "$DB_CONNECTION" -f postgres-schema.sql
 
 if [ $? -eq 0 ]; then
     echo "✓ Schema created successfully"
@@ -36,7 +44,7 @@ fi
 
 echo ""
 echo "Seeding demo data..."
-psql "$DATABASE_URL" -f /app/seed-data.sql
+psql "$DB_CONNECTION" -f seed-data.sql
 
 if [ $? -eq 0 ]; then
     echo "✓ Demo data seeded successfully"
@@ -52,8 +60,8 @@ echo ""
 
 # Verify tables were created
 echo "Verifying database setup..."
-psql "$DATABASE_URL" -c "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name;"
+psql "$DB_CONNECTION" -c "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name;"
 
 echo ""
 echo "Record counts:"
-psql "$DATABASE_URL" -c "SELECT 'properties' as table_name, COUNT(*) as count FROM properties UNION ALL SELECT 'units', COUNT(*) FROM units UNION ALL SELECT 'vendors', COUNT(*) FROM vendors UNION ALL SELECT 'tickets', COUNT(*) FROM tickets;"
+psql "$DB_CONNECTION" -c "SELECT 'properties' as table_name, COUNT(*) as count FROM properties UNION ALL SELECT 'units', COUNT(*) FROM units UNION ALL SELECT 'vendors', COUNT(*) FROM vendors UNION ALL SELECT 'tickets', COUNT(*) FROM tickets;"

@@ -6,7 +6,7 @@ Handles SMS, voice, and web intake for maintenance tickets.
 import logging
 from typing import Optional
 from fastapi import FastAPI, HTTPException, status, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from datetime import datetime
@@ -41,14 +41,30 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Configure appropriately for production
     allow_credentials=True,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
+
+# Serve static frontend files (if built)
+FRONTEND_DIST = os.path.join(os.path.dirname(__file__), '..', 'dashboard-v2', 'dist')
+if os.path.exists(FRONTEND_DIST):
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/static", StaticFiles(directory=FRONTEND_DIST, html=True), name="static")
+    print(f"[Startup] Frontend static files mounted at {FRONTEND_DIST}")
+else:
+    print(f"[Warning] Frontend dist not found at {FRONTEND_DIST} - API only mode")
 
 
 @app.get("/")
 async def root():
-    """Health check endpoint."""
+    """Health check endpoint - also serves frontend index.html if available."""
+    # Try to serve frontend
+    if os.path.exists(FRONTEND_DIST):
+        index_file = os.path.join(FRONTEND_DIST, "index.html")
+        if os.path.exists(index_file):
+            return FileResponse(index_file)
+    
+    # Fallback to API health check
     return {"status": "healthy", "service": "property-maintenance-agent"}
 
 
@@ -379,3 +395,26 @@ async def global_exception_handler(request: Request, exc: Exception):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
+
+
+# ============================================================================
+# SPA FALLBACK ROUTE (must be last due to path matching)
+# ============================================================================
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def serve_spa(full_path: str):
+    """
+    Serve React SPA for any non-API route.
+    Returns index.html to let React Router handle client-side routing.
+    """
+    # Don't interfere with API routes
+    if full_path.startswith("api/") or full_path in ["intake", "agent", "health"]:
+        raise HTTPException(status_code=404, detail="Not found")
+    
+    # Serve frontend index.html
+    if os.path.exists(FRONTEND_DIST):
+        index_file = os.path.join(FRONTEND_DIST, "index.html")
+        if os.path.exists(index_file):
+            return FileResponse(index_file)
+    
+    raise HTTPException(status_code=404, detail="Frontend not available")
