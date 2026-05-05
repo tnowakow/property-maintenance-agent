@@ -1,26 +1,13 @@
-# Property Maintenance Dashboard - Combined Backend + Frontend
+# Property Maintenance Dashboard - Backend API Only
 FROM python:3.11-slim
-
-# Install Node.js for building frontend
-RUN apt-get update && apt-get install -y \
-    curl \
-    nodejs \
-    npm \
-    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy backend requirements and install Python deps
+# Install dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy frontend code and build it
-COPY ../dashboard-v2 ./frontend
-WORKDIR /app/frontend
-RUN npm ci && npm run build
-WORKDIR /app
-
-# Copy backend code
+# Copy application code
 COPY main.py .
 COPY database.py .
 COPY models.py .
