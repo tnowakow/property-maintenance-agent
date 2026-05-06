@@ -6,6 +6,8 @@ builder = "DOCKER"
 plan = "standard"
 dockerfile = "Dockerfile"
 
+# Force redeploy - moved repo out of backend folder
+
 [deploy]
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 5
