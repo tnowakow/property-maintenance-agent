@@ -2,11 +2,8 @@
 # https://docs.railway.app/deployments/projects/config
 
 [build]
-builder = "DOCKER"
+builder = "NIXPACKS"
 plan = "standard"
-dockerfile = "Dockerfile"
-
-# Force redeploy - moved repo out of backend folder
 
 [deploy]
 restartPolicyType = "ON_FAILURE"
