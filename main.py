@@ -46,7 +46,7 @@ app.add_middleware(
 )
 
 # Serve static frontend files (if built)
-FRONTEND_DIST = os.path.join(os.path.dirname(__file__), '..', 'dashboard-v2', 'dist')
+FRONTEND_DIST = os.path.join(os.path.dirname(__file__), 'frontend', 'dist')
 if os.path.exists(FRONTEND_DIST):
     from fastapi.staticfiles import StaticFiles
     app.mount("/static", StaticFiles(directory=FRONTEND_DIST, html=True), name="static")
