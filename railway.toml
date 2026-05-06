@@ -4,7 +4,7 @@
 [build]
 builder = "DOCKER"
 plan = "standard"
-path = "."
+dockerfile = "Dockerfile"
 
 [deploy]
 restartPolicyType = "ON_FAILURE"
