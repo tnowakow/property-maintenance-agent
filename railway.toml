@@ -4,6 +4,7 @@
 [build]
 builder = "DOCKER"
 plan = "standard"
+path = "."
 
 [deploy]
 restartPolicyType = "ON_FAILURE"
