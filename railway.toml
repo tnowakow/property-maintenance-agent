@@ -9,24 +9,3 @@ plan = "standard"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 5
 numReplicas = 1
-
-# Runtime settings
-[env]
-NODE_ENV = "production"
-PYTHON_VERSION = "3.11"
-
-# PostgreSQL Configuration - Railway provides DATABASE_URL automatically
-# when you add the PostgreSQL plugin: `railway add postgresql`
-# No manual configuration needed!
-
-# Twilio Configuration - Set these in Railway dashboard
-TWILIO_ACCOUNT_SID = ""    # Twilio Account SID (from Twilio console)
-TWILIO_AUTH_TOKEN = ""     # Twilio Auth Token (from Twilio console)
-TWILIO_PHONE_NUMBER = ""   # Twilio phone number for SMS/voice (+1xxxxxxxxxx format)
-
-# Telegram Configuration - Set these in Railway dashboard
-TELEGRAM_BOT_TOKEN = ""    # Telegram Bot API token (from @BotFather)
-TELEGRAM_PM_CHAT_ID = ""   # Telegram chat ID for property manager alerts
-
-# Runtime
-PORT = 8000
