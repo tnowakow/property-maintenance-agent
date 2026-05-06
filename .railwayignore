@@ -1,0 +1,6 @@
+# Ignore everything except backend files
+.git
+__pycache__
+*.pyc
+.env
+node_modules

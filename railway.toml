@@ -4,6 +4,7 @@
 [build]
 builder = "DOCKER"
 plan = "standard"
+rootDirectory = "."
 
 [deploy]
 restartPolicyType = "ON_FAILURE"
